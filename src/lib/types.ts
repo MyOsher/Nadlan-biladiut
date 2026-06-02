@@ -72,6 +72,8 @@ export interface AppSettings {
   default_sale_fee_percent: number | null;
   default_rent_fee_text: string | null;
   reminder_days: number[] | null;
+  telegram_chat_id: string | null;
+  telegram_enabled: boolean | null;
   created_at: string;
   updated_at: string;
 }

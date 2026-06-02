@@ -35,6 +35,7 @@ export default function SettingsPage() {
         default_sale_fee_percent: s.default_sale_fee_percent,
         default_rent_fee_text: s.default_rent_fee_text,
         reminder_days: s.reminder_days,
+        telegram_enabled: s.telegram_enabled,
       })
       .eq("id", 1);
     setMsg(error ? `שגיאה: ${error.message}` : "ההגדרות נשמרו");
@@ -81,6 +82,58 @@ export default function SettingsPage() {
             <input className="field-input" value={s.default_rent_fee_text ?? ""} onChange={(e) => field("default_rent_fee_text", e.target.value)} />
           </Field>
         </div>
+      </section>
+
+      <section className="card space-y-4 p-5">
+        <div className="flex items-center justify-between">
+          <h2 className="border-r-4 border-brand-500 pr-2 text-lg font-bold">בוט טלגרם 🤖</h2>
+          {s.telegram_chat_id ? (
+            <span className="badge bg-green-100 text-green-800">מחובר ✓</span>
+          ) : (
+            <span className="badge bg-amber-100 text-amber-800">לא מחובר</span>
+          )}
+        </div>
+
+        {s.telegram_chat_id ? (
+          <p className="text-sm text-slate-600">
+            הבוט מחובר ושולח התראות. תקבל/י <b>סיכום יומי</b> של הנכסים הפעילים והתראות על בלעדיות
+            שמסתיימת. אפשר לשלוח לבוט <b>צילום של טופס חתום</b> והוא יפתח נכס חדש (טיוטה) וימלא את
+            הפרטים אוטומטית.
+          </p>
+        ) : (
+          <div className="space-y-3 text-sm text-slate-600">
+            <p>כדי לחבר את הבוט ולקבל התראות:</p>
+            <ol className="list-decimal space-y-1 pr-5">
+              <li>
+                פתח/י את הבוט:{" "}
+                <a
+                  href="https://t.me/Haneches_bot"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-semibold text-brand-700 underline"
+                >
+                  t.me/Haneches_bot
+                </a>
+              </li>
+              <li>
+                שלח/י לבוט את הפקודה <code className="rounded bg-slate-100 px-1">/start</code>
+              </li>
+              <li>רענן/י עמוד זה — הסטטוס יתעדכן ל״מחובר ✓״</li>
+            </ol>
+            <p className="text-xs text-slate-400">
+              לאחר החיבור אפשר לשלוח לבוט צילום/PDF של טופס בלעדיות חתום והוא ייצור נכס חדש אוטומטית.
+            </p>
+          </div>
+        )}
+
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={s.telegram_enabled !== false}
+            onChange={(e) => field("telegram_enabled", e.target.checked)}
+          />
+          שליחת סיכום יומי והתראות בטלגרם
+        </label>
       </section>
 
       <section className="card space-y-4 p-5">
