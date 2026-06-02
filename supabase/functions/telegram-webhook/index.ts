@@ -7,6 +7,8 @@
 //       photo / pdf document  -> saves the signed form, runs AI extraction (if an
 //                                Anthropic key is configured), creates a DRAFT property,
 //                                and replies with a summary.
+//       free-text question    -> answers questions about the portfolio (how many for
+//                                sale/rent, which exclusivity ends soonest, etc.)
 //
 // Secrets live in the private `app_secrets` table (service-role only):
 //   telegram_bot_token, telegram_webhook_secret, [anthropic_api_key], [app_base_url]
@@ -86,7 +88,7 @@ Deno.serve(async (req) => {
       await send(
         token,
         chatId,
-        "✅ <b>חובר בהצלחה!</b>\nמעכשיו תקבל כאן תזכורות וסיכום יומי.\n\n📸 שלח לי <b>צילום או PDF של טופס בלעדיות חתום</b> ואני אפתח עבורו נכס חדש (טיוטה) ואמלא את הפרטים אוטומטית.",
+        "✅ <b>חובר בהצלחה!</b>\nמעכשיו תקבל כאן תזכורות וסיכום יומי.\n\n📸 שלח לי <b>צילום או PDF של טופס בלעדיות חתום</b> ואני אפתח עבורו נכס חדש (טיוטה) ואמלא את הפרטים אוטומטית.\n\n💬 אפשר גם <b>לשאול אותי שאלות</b> על הנכסים, למשל:\n• כמה נכסים בבלעדיות יש למכירה?\n• כמה נכסים להשכרה?\n• איזה נכס הכי קרוב לסיום בלעדיות ומתי?",
       );
       return json({ ok: true });
     }
@@ -104,11 +106,17 @@ Deno.serve(async (req) => {
     }
 
     if (!fileId) {
-      await send(
-        token,
-        chatId,
-        "שלח/י לי <b>צילום או PDF של טופס בלעדיות חתום</b> ואפתח עבורו נכס חדש.\nפקודות: /start לחיבור.",
-      );
+      // No attachment. If the user wrote something, treat it as a question
+      // about the portfolio; otherwise show the help text.
+      if (text) {
+        await answerQuestion(db, token, chatId, text);
+      } else {
+        await send(
+          token,
+          chatId,
+          "שלח/י לי <b>צילום או PDF של טופס בלעדיות חתום</b> ואפתח עבורו נכס חדש,\nאו שאל/י אותי שאלה על הנכסים (למשל: \"כמה נכסים למכירה?\").\nפקודות: /start לחיבור.",
+        );
+      }
       return json({ ok: true });
     }
 
@@ -241,6 +249,125 @@ async function extractWithClaude(apiKey: string, bytes: Uint8Array, mime: string
   const txt: string = data?.content?.[0]?.text ?? "";
   const jsonStr = txt.slice(txt.indexOf("{"), txt.lastIndexOf("}") + 1);
   return JSON.parse(jsonStr);
+}
+
+// ---- Free-text questions about the portfolio -------------------------------
+
+type PropRow = {
+  deal_type: string | null;
+  status: string | null;
+  property_type: string | null;
+  property_address: string | null;
+  city: string | null;
+  asking_price: number | null;
+  rooms: number | null;
+  owner_name: string | null;
+  exclusivity_start: string | null;
+  exclusivity_end: string | null;
+};
+
+async function answerQuestion(
+  db: ReturnType<typeof admin>,
+  token: string,
+  chatId: number | string,
+  question: string,
+) {
+  const { data, error } = await db
+    .from("properties")
+    .select(
+      "deal_type,status,property_type,property_address,city,asking_price,rooms,owner_name,exclusivity_start,exclusivity_end",
+    )
+    .neq("status", "draft");
+  if (error) {
+    await send(token, chatId, `❌ לא הצלחתי לקרוא את הנתונים: ${error.message}`);
+    return;
+  }
+  const props = (data ?? []) as PropRow[];
+  if (!props.length) {
+    await send(token, chatId, "אין עדיין נכסים פעילים במערכת.");
+    return;
+  }
+
+  const anthropicKey = await getSecret(db, "anthropic_api_key");
+  const answer = anthropicKey
+    ? await askClaudeQuestion(anthropicKey, props, question).catch(() => null) ??
+      basicAnswer(props, question)
+    : basicAnswer(props, question);
+
+  await send(token, chatId, answer);
+}
+
+async function askClaudeQuestion(apiKey: string, props: PropRow[], question: string): Promise<string> {
+  const today = new Date().toISOString().slice(0, 10);
+  const system =
+    `You are a helpful assistant for an Israeli real-estate agent. Today's date is ${today}. ` +
+    `You are given the agent's property portfolio as JSON. Field notes: status "active" means the property ` +
+    `is currently under an exclusivity (בלעדיות) agreement; deal_type "sale" = מכירה, "rent" = השכרה; ` +
+    `exclusivity_end is the date the exclusivity ends (YYYY-MM-DD); asking_price is in NIS (₪). ` +
+    `Answer the user's question in Hebrew, concisely and to the point. When relevant include the property ` +
+    `address, the date, and how many days remain until/after exclusivity_end. If the data does not contain ` +
+    `the answer, say so briefly. Do not invent data.\n\nPORTFOLIO:\n${JSON.stringify(props)}`;
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6",
+      max_tokens: 600,
+      system,
+      messages: [{ role: "user", content: question }],
+    }),
+  });
+  const data = await res.json();
+  const txt: string = data?.content?.[0]?.text ?? "";
+  if (!txt.trim()) throw new Error("empty answer");
+  return txt.trim();
+}
+
+// Keyword-based fallback for when no Anthropic key is configured (or the call fails).
+function basicAnswer(props: PropRow[], q: string): string {
+  const active = props.filter((p) => p.status === "active");
+  const sale = active.filter((p) => p.deal_type === "sale");
+  const rent = active.filter((p) => p.deal_type === "rent");
+  const withEnd = active
+    .filter((p) => p.exclusivity_end)
+    .sort((a, b) => (a.exclusivity_end! < b.exclusivity_end! ? -1 : 1));
+  const nearest = withEnd[0];
+
+  const addr = (p: PropRow) =>
+    [p.property_address, p.city].filter(Boolean).join(", ") || p.owner_name || "נכס ללא כתובת";
+  const nearestLine = nearest
+    ? `${addr(nearest)} — סיום בלעדיות ב-${formatDate(nearest.exclusivity_end!)} (${daysPhrase(nearest.exclusivity_end!)})`
+    : "אין נכס עם תאריך סיום בלעדיות.";
+
+  if (/(השכר|להשכרה)/.test(q)) return `🏠 ${rent.length} נכסים בבלעדיות להשכרה.`;
+  if (/(מכיר|למכירה)/.test(q)) return `🏠 ${sale.length} נכסים בבלעדיות למכירה.`;
+  if (/(קרוב|מסתיים|סיום|נגמר|מתי|פג)/.test(q)) return `⏰ הכי קרוב לסיום: ${nearestLine}`;
+
+  // Default: a short portfolio summary.
+  return (
+    `📊 סה"כ ${active.length} נכסים בבלעדיות (${sale.length} למכירה, ${rent.length} להשכרה).\n` +
+    `⏰ הכי קרוב לסיום: ${nearestLine}`
+  );
+}
+
+function formatDate(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
+
+function daysPhrase(iso: string): string {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(iso + "T00:00:00");
+  const diff = Math.round((target.getTime() - today.getTime()) / 86400000);
+  if (diff > 0) return `בעוד ${diff} ימים`;
+  if (diff === 0) return "היום";
+  return `הסתיים לפני ${Math.abs(diff)} ימים`;
 }
 
 function base64(bytes: Uint8Array): string {
