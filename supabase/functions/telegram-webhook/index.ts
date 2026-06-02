@@ -38,9 +38,27 @@ async function tg(token: string, method: string, payload: unknown) {
   return res.json();
 }
 
-async function send(token: string, chatId: number | string, text: string) {
-  await tg(token, "sendMessage", { chat_id: chatId, text, parse_mode: "HTML" });
+async function send(token: string, chatId: number | string, text: string, replyMarkup?: unknown) {
+  await tg(token, "sendMessage", {
+    chat_id: chatId,
+    text,
+    parse_mode: "HTML",
+    ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+  });
 }
+
+// Persistent keyboard of ready-made questions. Tapping a button simply sends its
+// text, which is then handled like any other free-text question.
+const QUESTION_KEYBOARD = {
+  keyboard: [
+    [{ text: "כמה נכסים למכירה?" }, { text: "כמה נכסים להשכרה?" }],
+    [{ text: "איזה נכס הכי קרוב לסיום בלעדיות?" }],
+    [{ text: "אילו נכסים מסתיימים החודש?" }],
+    [{ text: "סיכום התיק" }],
+  ],
+  resize_keyboard: true,
+  is_persistent: true,
+};
 
 Deno.serve(async (req) => {
   const db = admin();
@@ -88,8 +106,15 @@ Deno.serve(async (req) => {
       await send(
         token,
         chatId,
-        "✅ <b>חובר בהצלחה!</b>\nמעכשיו תקבל כאן תזכורות וסיכום יומי.\n\n📸 שלח לי <b>צילום או PDF של טופס בלעדיות חתום</b> ואני אפתח עבורו נכס חדש (טיוטה) ואמלא את הפרטים אוטומטית.\n\n💬 אפשר גם <b>לשאול אותי שאלות</b> על הנכסים, למשל:\n• כמה נכסים בבלעדיות יש למכירה?\n• כמה נכסים להשכרה?\n• איזה נכס הכי קרוב לסיום בלעדיות ומתי?",
+        "✅ <b>חובר בהצלחה!</b>\nמעכשיו תקבל כאן תזכורות וסיכום יומי.\n\n📸 שלח לי <b>צילום או PDF של טופס בלעדיות חתום</b> ואני אפתח עבורו נכס חדש (טיוטה) ואמלא את הפרטים אוטומטית.\n\n💬 אפשר גם <b>לשאול אותי שאלות</b> על הנכסים — בחר/י שאלה מהכפתורים למטה, או כתוב/כתבי שאלה חופשית.",
+        QUESTION_KEYBOARD,
       );
+      return json({ ok: true });
+    }
+
+    // Re-show the ready-made question buttons.
+    if (text === "/menu" || text === "/שאלות") {
+      await send(token, chatId, "בחר/י שאלה 👇", QUESTION_KEYBOARD);
       return json({ ok: true });
     }
 
