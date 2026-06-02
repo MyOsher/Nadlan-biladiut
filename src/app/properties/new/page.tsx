@@ -55,7 +55,7 @@ export default function NewPropertyPage() {
   // Signatures + scan
   const [ownerSig, setOwnerSig] = useState<string | null>(null);
   const [agentSig, setAgentSig] = useState<string | null>(null);
-  const [scanFile, setScanFile] = useState<File | null>(null);
+  const [scanFiles, setScanFiles] = useState<File[]>([]);
   const [notes, setNotes] = useState("");
 
   // Prefill agent + default fee from settings
@@ -90,13 +90,13 @@ export default function NewPropertyPage() {
     setSaving(true);
     setError(null);
     try {
-      // Upload the scanned agreement first, if provided.
-      let signedFormUrl: string | null = null;
-      if (scanFile) {
-        const path = `${crypto.randomUUID()}-${scanFile.name}`;
-        const { error: upErr } = await supabase.storage.from(FORMS_BUCKET).upload(path, scanFile);
+      // Upload the scanned agreement form(s) first, if provided.
+      const signedFormUrls: string[] = [];
+      for (const file of scanFiles) {
+        const path = `${crypto.randomUUID()}-${file.name}`;
+        const { error: upErr } = await supabase.storage.from(FORMS_BUCKET).upload(path, file);
         if (upErr) throw upErr;
-        signedFormUrl = supabase.storage.from(FORMS_BUCKET).getPublicUrl(path).data.publicUrl;
+        signedFormUrls.push(supabase.storage.from(FORMS_BUCKET).getPublicUrl(path).data.publicUrl);
       }
 
       const primaryOwner = owners.find((o) => o.full_name.trim());
@@ -128,7 +128,8 @@ export default function NewPropertyPage() {
           owner_signature: ownerSig,
           agent_signature: agentSig,
           signed_digitally_at: ownerSig || agentSig ? new Date().toISOString() : null,
-          signed_form_url: signedFormUrl,
+          signed_form_url: signedFormUrls[0] ?? null,
+          signed_form_urls: signedFormUrls,
         })
         .select("id")
         .single();
@@ -320,13 +321,17 @@ export default function NewPropertyPage() {
           <SignaturePad label="חתימת המתווך" value={agentSig} onChange={setAgentSig} />
         </div>
         <div className="mt-4">
-          <label className="field-label">העלאת סריקה/צילום של הטופס החתום (PDF או תמונה)</label>
+          <label className="field-label">העלאת סריקות/צילומים של הטופס החתום (PDF או תמונות)</label>
           <input
             type="file"
             accept="image/*,application/pdf"
+            multiple
             className="field-input"
-            onChange={(e) => setScanFile(e.target.files?.[0] ?? null)}
+            onChange={(e) => setScanFiles(e.target.files ? Array.from(e.target.files) : [])}
           />
+          {scanFiles.length > 0 && (
+            <p className="mt-1 text-sm text-slate-500">{scanFiles.length} קבצים נבחרו</p>
+          )}
         </div>
         <div className="mt-4">
           <Field label="הערות">

@@ -45,16 +45,35 @@ export default function PropertyDetailPage() {
     setTimeout(() => setMsg(null), 2500);
   }
 
-  async function uploadScan(file: File) {
-    const path = `${id}/${crypto.randomUUID()}-${file.name}`;
-    const { error } = await supabase.storage.from(FORMS_BUCKET).upload(path, file);
-    if (error) {
-      setError(error.message);
-      return;
+  async function uploadScans(files: FileList) {
+    const urls: string[] = [];
+    for (const file of Array.from(files)) {
+      const path = `${id}/${crypto.randomUUID()}-${file.name}`;
+      const { error } = await supabase.storage.from(FORMS_BUCKET).upload(path, file);
+      if (error) {
+        setError(error.message);
+        return;
+      }
+      urls.push(supabase.storage.from(FORMS_BUCKET).getPublicUrl(path).data.publicUrl);
     }
-    const url = supabase.storage.from(FORMS_BUCKET).getPublicUrl(path).data.publicUrl;
-    field("signed_form_url", url);
-    await supabase.from("properties").update({ signed_form_url: url }).eq("id", id);
+    if (!urls.length) return;
+    const next = [...(p?.signed_form_urls ?? []), ...urls];
+    field("signed_form_urls", next);
+    field("signed_form_url", next[0]);
+    await supabase
+      .from("properties")
+      .update({ signed_form_urls: next, signed_form_url: next[0] })
+      .eq("id", id);
+  }
+
+  async function removeScan(url: string) {
+    const next = (p?.signed_form_urls ?? []).filter((u) => u !== url);
+    field("signed_form_urls", next);
+    field("signed_form_url", next[0] ?? null);
+    await supabase
+      .from("properties")
+      .update({ signed_form_urls: next, signed_form_url: next[0] ?? null })
+      .eq("id", id);
   }
 
   async function removeProperty() {
@@ -67,6 +86,8 @@ export default function PropertyDetailPage() {
   if (!p) return <p className="py-10 text-center text-red-600">הנכס לא נמצא. {error}</p>;
 
   const ex = exclusivityState(p.exclusivity_end);
+  // Prefer the multi-value column; fall back to the legacy single URL.
+  const forms = p.signed_form_urls?.length ? p.signed_form_urls : p.signed_form_url ? [p.signed_form_url] : [];
 
   return (
     <div className="space-y-6">
@@ -167,22 +188,40 @@ export default function PropertyDetailPage() {
           <SignaturePad label="חתימת הלקוח / בעלים" value={p.owner_signature} onChange={(v) => field("owner_signature", v)} />
           <SignaturePad label="חתימת המתווך" value={p.agent_signature} onChange={(v) => field("agent_signature", v)} />
         </div>
-        <div className="mt-4 flex flex-wrap items-end gap-4">
-          <div className="flex-1">
-            <label className="field-label">העלאת/החלפת סריקה של הטופס החתום</label>
-            <input
-              type="file"
-              accept="image/*,application/pdf"
-              className="field-input"
-              onChange={(e) => e.target.files?.[0] && uploadScan(e.target.files[0])}
-            />
-          </div>
-          {p.signed_form_url && (
-            <a href={p.signed_form_url} target="_blank" rel="noreferrer" className="btn btn-secondary">
-              צפייה בטופס החתום ↗
-            </a>
-          )}
+        <div className="mt-4">
+          <label className="field-label">העלאת סריקות של הטופס החתום (ניתן לבחור כמה קבצים)</label>
+          <input
+            type="file"
+            accept="image/*,application/pdf"
+            multiple
+            className="field-input"
+            onChange={(e) => {
+              if (e.target.files?.length) uploadScans(e.target.files);
+              e.target.value = "";
+            }}
+          />
         </div>
+        {forms.length > 0 && (
+          <ul className="mt-4 space-y-2">
+            {forms.map((url, i) => (
+              <li
+                key={url}
+                className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+              >
+                <a href={url} target="_blank" rel="noreferrer" className="text-sm font-medium text-brand-700 hover:underline">
+                  צפייה בטופס {i + 1} ↗
+                </a>
+                <button
+                  type="button"
+                  onClick={() => removeScan(url)}
+                  className="text-sm font-semibold text-red-600 hover:underline"
+                >
+                  מחיקה
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </Section>
 
       {/* Sticky save bar */}
