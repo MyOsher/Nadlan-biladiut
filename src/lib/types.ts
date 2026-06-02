@@ -36,6 +36,7 @@ export interface Property {
   agent_signature: string | null;
   signed_digitally_at: string | null;
   signed_form_url: string | null;
+  signed_form_urls: string[] | null;
   cover_image_url: string | null;
   created_at: string;
   updated_at: string;
