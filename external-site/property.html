@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>עמוד נכס — תבנית פתיחה</title>
+
+  <!-- Tailwind via CDN: zero build step, easy to iterate / hand to a designer. -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    body { font-family: "Heebo", system-ui, sans-serif; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+  </style>
+  <script>
+    tailwind.config = { theme: { extend: { colors: { brand: {
+      50:"#eef5ff",100:"#d9e8ff",200:"#bcd6ff",300:"#8ebcff",400:"#5996ff",
+      500:"#3370f5",600:"#2152d8",700:"#1d43b0",800:"#1d3a8c",900:"#1d356f" } } } } };
+  </script>
+</head>
+<body class="bg-slate-50 text-slate-900 antialiased">
+
+  <!-- =================================================================
+       CONFIG — edit these two lines, that's it.
+       ================================================================= -->
+  <script>
+    const API_BASE    = "https://kovjbfdgllnprryqvgon.supabase.co/functions/v1/public-listings";
+    const AGENT_PHONE = "972500000000"; // מספר וואטסאפ/טלפון של הסוכן (פורמט בינלאומי, בלי +)
+  </script>
+
+  <main id="app" class="mx-auto max-w-5xl px-4 py-6"></main>
+
+  <!-- Mustache-free tiny template, rendered by render() below. -->
+  <script>
+    // ---- Sample data: lets the page render standalone (for design). When a
+    // ?slug=… is in the URL, real data from the API replaces it. ----
+    const SAMPLE = {
+      public_slug: "demo",
+      deal_type: "sale",
+      property_type: "דירה",
+      rooms: 4, size_sqm: 105, floor: "3",
+      property_address: "הרצל 25", city: "תל אביב",
+      asking_price: 2450000,
+      public_description:
+        "דירת 4 חדרים מרווחת ומוארת בלב העיר. קומה 3 עם מעלית, מרפסת שמש פונה לדרום, " +
+        "מטבח משופץ, חניה בטאבו וממ\"ד. קרובה לפארק, בתי ספר ותחבורה ציבורית.",
+      cover_image_url: "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=1200",
+      media: [
+        { type:"image", url:"https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=1200", caption:"סלון" },
+        { type:"image", url:"https://images.unsplash.com/photo-1501183638710-841dd1904471?w=1200", caption:"מטבח" },
+        { type:"image", url:"https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=1200", caption:"חדר שינה" },
+        { type:"image", url:"https://images.unsplash.com/photo-1556909212-d5b604d0c90d?w=1200", caption:"מרפסת" },
+      ],
+    };
+
+    const ils  = (n) => n == null ? "—" : Number(n).toLocaleString("he-IL") + " ₪";
+    const deal = (d) => d === "rent" ? "להשכרה" : "למכירה";
+    const esc  = (s) => (s ?? "").toString().replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+
+    function render(p) {
+      const images = (p.media || []).filter(m => m.type === "image");
+      const cover  = p.cover_image_url || images[0]?.url || "";
+      const title  = [p.property_address, p.city].filter(Boolean).join(", ") || "נכס";
+      const waText = encodeURIComponent(`היי, מתעניין/ת בנכס: ${title} (${API_BASE_LINK(p.public_slug)})`);
+
+      document.title = `${title} — ${deal(p.deal_type)}`;
+      document.getElementById("app").innerHTML = `
+        <!-- Gallery -->
+        <section class="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+          <div class="relative">
+            <img id="hero" src="${esc(cover)}" alt="" class="h-[42vh] w-full object-cover sm:h-[56vh]" />
+            <span class="absolute right-4 top-4 rounded-full bg-brand-600 px-3 py-1 text-sm font-bold text-white shadow">
+              ${deal(p.deal_type)}
+            </span>
+          </div>
+          ${images.length > 1 ? `
+          <div class="no-scrollbar flex gap-2 overflow-x-auto p-3">
+            ${images.map(m => `
+              <img src="${esc(m.url)}" alt="${esc(m.caption)}"
+                   onclick="document.getElementById('hero').src=this.src"
+                   class="h-20 w-28 flex-none cursor-pointer rounded-xl object-cover ring-2 ring-transparent hover:ring-brand-400" />
+            `).join("")}
+          </div>` : ""}
+        </section>
+
+        <!-- Content + sticky contact -->
+        <div class="mt-6 grid gap-6 lg:grid-cols-3">
+          <div class="lg:col-span-2 space-y-6">
+            <div>
+              <h1 class="text-3xl font-extrabold text-slate-800">${esc(title)}</h1>
+              <p class="mt-1 text-slate-500">${[esc(p.property_type), p.floor ? "קומה " + esc(p.floor) : ""].filter(Boolean).join(" · ")}</p>
+              <div class="mt-3 text-3xl font-extrabold text-brand-700">${ils(p.asking_price)}</div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-3">
+              ${specBox("חדרים", p.rooms ?? "—")}
+              ${specBox("מ\"ר", p.size_sqm ?? "—")}
+              ${specBox("קומה", p.floor ?? "—")}
+            </div>
+
+            ${p.public_description ? `
+            <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h2 class="mb-2 text-lg font-bold text-slate-800">תיאור הנכס</h2>
+              <p class="leading-relaxed text-slate-600 whitespace-pre-line">${esc(p.public_description)}</p>
+            </div>` : ""}
+          </div>
+
+          <aside class="lg:sticky lg:top-6 h-fit rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div class="text-sm text-slate-500">מעוניינים בנכס?</div>
+            <div class="mt-1 text-xl font-extrabold text-slate-800">דברו איתנו</div>
+            <a href="https://wa.me/${AGENT_PHONE}?text=${waText}" target="_blank" rel="noreferrer"
+               class="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-3 font-bold text-white hover:bg-green-700">
+              💬 וואטסאפ
+            </a>
+            <a href="tel:+${AGENT_PHONE}"
+               class="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 font-bold text-slate-700 hover:bg-slate-50">
+              📞 התקשרו
+            </a>
+          </aside>
+        </div>`;
+    }
+
+    function specBox(label, value) {
+      return `<div class="rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm">
+        <div class="text-2xl font-extrabold text-slate-800">${esc(value)}</div>
+        <div class="text-xs font-medium text-slate-500">${esc(label)}</div></div>`;
+    }
+
+    function API_BASE_LINK(slug) { return location.origin + location.pathname + "?slug=" + slug; }
+
+    // ---- Boot: fetch real data if ?slug=… is present, else show the sample. ----
+    (async function () {
+      const slug = new URLSearchParams(location.search).get("slug");
+      if (!slug) return render(SAMPLE);
+      try {
+        const res = await fetch(`${API_BASE}?slug=${encodeURIComponent(slug)}`);
+        if (!res.ok) throw new Error(res.status);
+        render(await res.json());
+      } catch (e) {
+        document.getElementById("app").innerHTML =
+          `<div class="rounded-2xl border border-red-200 bg-red-50 p-6 text-center text-red-700">
+             הנכס לא נמצא או שאינו מפורסם.</div>`;
+      }
+    })();
+  </script>
+</body>
+</html>
