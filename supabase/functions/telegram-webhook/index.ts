@@ -7,6 +7,8 @@
 //       photo / pdf document  -> saves the signed form, runs AI extraction (if an
 //                                Anthropic key is configured), creates a DRAFT property,
 //                                and replies with a summary.
+//       free-text question    -> answers questions about the portfolio (how many for
+//                                sale/rent, which exclusivity ends soonest, etc.)
 //
 // Secrets live in the private `app_secrets` table (service-role only):
 //   telegram_bot_token, telegram_webhook_secret, [anthropic_api_key], [app_base_url]
@@ -36,9 +38,27 @@ async function tg(token: string, method: string, payload: unknown) {
   return res.json();
 }
 
-async function send(token: string, chatId: number | string, text: string) {
-  await tg(token, "sendMessage", { chat_id: chatId, text, parse_mode: "HTML" });
+async function send(token: string, chatId: number | string, text: string, replyMarkup?: unknown) {
+  await tg(token, "sendMessage", {
+    chat_id: chatId,
+    text,
+    parse_mode: "HTML",
+    ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+  });
 }
+
+// Persistent keyboard of ready-made questions. Tapping a button simply sends its
+// text, which is then handled like any other free-text question.
+const QUESTION_KEYBOARD = {
+  keyboard: [
+    [{ text: "כמה נכסים למכירה?" }, { text: "כמה נכסים להשכרה?" }],
+    [{ text: "איזה נכס הכי קרוב לסיום בלעדיות?" }],
+    [{ text: "אילו נכסים מסתיימים החודש?" }],
+    [{ text: "סיכום התיק" }],
+  ],
+  resize_keyboard: true,
+  is_persistent: true,
+};
 
 Deno.serve(async (req) => {
   const db = admin();
@@ -86,27 +106,42 @@ Deno.serve(async (req) => {
       await send(
         token,
         chatId,
-        "✅ <b>חובר בהצלחה!</b>\nמעכשיו תקבל כאן תזכורות וסיכום יומי.\n\n📸 שלח לי <b>צילום או PDF של טופס בלעדיות חתום</b> ואני אפתח עבורו נכס חדש (טיוטה) ואמלא את הפרטים אוטומטית.",
+        "✅ <b>חובר בהצלחה!</b>\nמעכשיו תקבל כאן תזכורות וסיכום יומי.\n\n📸 שלח לי <b>צילום או PDF של טופס בלעדיות חתום</b> ואני אפתח עבורו נכס חדש (טיוטה) ואמלא את הפרטים אוטומטית.\n\n💬 אפשר גם <b>לשאול אותי שאלות</b> על הנכסים — בחר/י שאלה מהכפתורים למטה, או כתוב/כתבי שאלה חופשית.",
+        QUESTION_KEYBOARD,
       );
       return json({ ok: true });
     }
 
-    // Find an attached photo or PDF/image document.
+    // Re-show the ready-made question buttons.
+    if (text === "/menu" || text === "/שאלות") {
+      await send(token, chatId, "בחר/י שאלה 👇", QUESTION_KEYBOARD);
+      return json({ ok: true });
+    }
+
+    // Find an attached photo or document. We accept any document (some clients
+    // send PDFs as application/octet-stream) and infer a sane mime type from the
+    // declared type or the file name extension.
     let fileId: string | null = null;
     let mime = "image/jpeg";
     if (msg.photo?.length) {
       fileId = msg.photo[msg.photo.length - 1].file_id; // largest size
-    } else if (msg.document && /image\/|pdf/.test(msg.document.mime_type ?? "")) {
+    } else if (msg.document) {
       fileId = msg.document.file_id;
-      mime = msg.document.mime_type;
+      mime = guessMime(msg.document.mime_type, msg.document.file_name);
     }
 
     if (!fileId) {
-      await send(
-        token,
-        chatId,
-        "שלח/י לי <b>צילום או PDF של טופס בלעדיות חתום</b> ואפתח עבורו נכס חדש.\nפקודות: /start לחיבור.",
-      );
+      // No attachment. If the user wrote something, treat it as a question
+      // about the portfolio; otherwise show the help text.
+      if (text) {
+        await answerQuestion(db, token, chatId, text);
+      } else {
+        await send(
+          token,
+          chatId,
+          "שלח/י לי <b>צילום או PDF של טופס בלעדיות חתום</b> ואפתח עבורו נכס חדש,\nאו שאל/י אותי שאלה על הנכסים (למשל: \"כמה נכסים למכירה?\").\nפקודות: /start לחיבור.",
+        );
+      }
       return json({ ok: true });
     }
 
@@ -118,7 +153,11 @@ Deno.serve(async (req) => {
     if (!filePath) throw new Error("getFile failed");
     const fileRes = await fetch(`https://api.telegram.org/file/bot${token}/${filePath}`);
     const bytes = new Uint8Array(await fileRes.arrayBuffer());
-    const ext = filePath.split(".").pop() ?? "jpg";
+    // Telegram's file_path for documents is often "documents/file_4" (no real
+    // extension), so never trust it blindly — that produced broken storage keys
+    // like ".documents/file_4". Prefer the original file name, then the mime
+    // type, and only fall back to the path if it has a clean extension.
+    const ext = pickExt(msg.document?.file_name, mime, filePath);
 
     // Store the signed form.
     const storagePath = `telegram/${crypto.randomUUID()}.${ext}`;
@@ -156,6 +195,7 @@ Deno.serve(async (req) => {
       agent_id_number: extracted?.agent_id_number ?? null,
       agreement_date: dateOrNull(extracted?.agreement_date),
       signed_form_url: signedFormUrl,
+      signed_form_urls: [signedFormUrl],
     };
     const { data: prop, error: insErr } = await db
       .from("properties").insert(ins).select("id").single();
@@ -178,11 +218,18 @@ Deno.serve(async (req) => {
 
     const base = await getSecret(db, "app_base_url");
     const link = base ? `\n🔗 ${base.replace(/\/$/, "")}/properties/${prop.id}` : "";
-    const summary = extracted
-      ? `📍 ${ins.property_address ?? "—"}${ins.city ? ", " + ins.city : ""}\n🏷️ ${
+    let summary: string;
+    if (extracted) {
+      summary = `📍 ${ins.property_address ?? "—"}${ins.city ? ", " + ins.city : ""}\n🏷️ ${
         ins.deal_type === "rent" ? "השכרה" : "מכירה"
-      } · ${ins.property_type ?? "—"}\n💰 ${ins.asking_price ? Number(ins.asking_price).toLocaleString("he-IL") + " ₪" : "—"}\n👤 ${ins.owner_name ?? "—"}\n📅 בלעדיות עד: ${ins.exclusivity_end ?? "—"}`
-      : "הטופס נשמר. (קריאת AI אינה פעילה — לא הוגדר מפתח Anthropic.)";
+      } · ${ins.property_type ?? "—"}\n💰 ${ins.asking_price ? Number(ins.asking_price).toLocaleString("he-IL") + " ₪" : "—"}\n👤 ${ins.owner_name ?? "—"}\n📅 בלעדיות עד: ${ins.exclusivity_end ?? "—"}`;
+    } else if (!anthropicKey) {
+      summary = "הטופס נשמר. (קריאת AI אינה פעילה — לא הוגדר מפתח Anthropic.)";
+    } else if (!mime.startsWith("image/")) {
+      summary = "הטופס (PDF) נשמר. קריאת הפרטים האוטומטית זמינה כרגע רק לצילומים/תמונות.";
+    } else {
+      summary = "הטופס נשמר אך לא הצלחתי לקרוא את הפרטים אוטומטית — נא להשלים ידנית.";
+    }
 
     await send(
       token,
@@ -233,6 +280,125 @@ async function extractWithClaude(apiKey: string, bytes: Uint8Array, mime: string
   return JSON.parse(jsonStr);
 }
 
+// ---- Free-text questions about the portfolio -------------------------------
+
+type PropRow = {
+  deal_type: string | null;
+  status: string | null;
+  property_type: string | null;
+  property_address: string | null;
+  city: string | null;
+  asking_price: number | null;
+  rooms: number | null;
+  owner_name: string | null;
+  exclusivity_start: string | null;
+  exclusivity_end: string | null;
+};
+
+async function answerQuestion(
+  db: ReturnType<typeof admin>,
+  token: string,
+  chatId: number | string,
+  question: string,
+) {
+  const { data, error } = await db
+    .from("properties")
+    .select(
+      "deal_type,status,property_type,property_address,city,asking_price,rooms,owner_name,exclusivity_start,exclusivity_end",
+    )
+    .neq("status", "draft");
+  if (error) {
+    await send(token, chatId, `❌ לא הצלחתי לקרוא את הנתונים: ${error.message}`);
+    return;
+  }
+  const props = (data ?? []) as PropRow[];
+  if (!props.length) {
+    await send(token, chatId, "אין עדיין נכסים פעילים במערכת.");
+    return;
+  }
+
+  const anthropicKey = await getSecret(db, "anthropic_api_key");
+  const answer = anthropicKey
+    ? await askClaudeQuestion(anthropicKey, props, question).catch(() => null) ??
+      basicAnswer(props, question)
+    : basicAnswer(props, question);
+
+  await send(token, chatId, answer);
+}
+
+async function askClaudeQuestion(apiKey: string, props: PropRow[], question: string): Promise<string> {
+  const today = new Date().toISOString().slice(0, 10);
+  const system =
+    `You are a helpful assistant for an Israeli real-estate agent. Today's date is ${today}. ` +
+    `You are given the agent's property portfolio as JSON. Field notes: status "active" means the property ` +
+    `is currently under an exclusivity (בלעדיות) agreement; deal_type "sale" = מכירה, "rent" = השכרה; ` +
+    `exclusivity_end is the date the exclusivity ends (YYYY-MM-DD); asking_price is in NIS (₪). ` +
+    `Answer the user's question in Hebrew, concisely and to the point. When relevant include the property ` +
+    `address, the date, and how many days remain until/after exclusivity_end. If the data does not contain ` +
+    `the answer, say so briefly. Do not invent data.\n\nPORTFOLIO:\n${JSON.stringify(props)}`;
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6",
+      max_tokens: 600,
+      system,
+      messages: [{ role: "user", content: question }],
+    }),
+  });
+  const data = await res.json();
+  const txt: string = data?.content?.[0]?.text ?? "";
+  if (!txt.trim()) throw new Error("empty answer");
+  return txt.trim();
+}
+
+// Keyword-based fallback for when no Anthropic key is configured (or the call fails).
+function basicAnswer(props: PropRow[], q: string): string {
+  const active = props.filter((p) => p.status === "active");
+  const sale = active.filter((p) => p.deal_type === "sale");
+  const rent = active.filter((p) => p.deal_type === "rent");
+  const withEnd = active
+    .filter((p) => p.exclusivity_end)
+    .sort((a, b) => (a.exclusivity_end! < b.exclusivity_end! ? -1 : 1));
+  const nearest = withEnd[0];
+
+  const addr = (p: PropRow) =>
+    [p.property_address, p.city].filter(Boolean).join(", ") || p.owner_name || "נכס ללא כתובת";
+  const nearestLine = nearest
+    ? `${addr(nearest)} — סיום בלעדיות ב-${formatDate(nearest.exclusivity_end!)} (${daysPhrase(nearest.exclusivity_end!)})`
+    : "אין נכס עם תאריך סיום בלעדיות.";
+
+  if (/(השכר|להשכרה)/.test(q)) return `🏠 ${rent.length} נכסים בבלעדיות להשכרה.`;
+  if (/(מכיר|למכירה)/.test(q)) return `🏠 ${sale.length} נכסים בבלעדיות למכירה.`;
+  if (/(קרוב|מסתיים|סיום|נגמר|מתי|פג)/.test(q)) return `⏰ הכי קרוב לסיום: ${nearestLine}`;
+
+  // Default: a short portfolio summary.
+  return (
+    `📊 סה"כ ${active.length} נכסים בבלעדיות (${sale.length} למכירה, ${rent.length} להשכרה).\n` +
+    `⏰ הכי קרוב לסיום: ${nearestLine}`
+  );
+}
+
+function formatDate(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
+
+function daysPhrase(iso: string): string {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(iso + "T00:00:00");
+  const diff = Math.round((target.getTime() - today.getTime()) / 86400000);
+  if (diff > 0) return `בעוד ${diff} ימים`;
+  if (diff === 0) return "היום";
+  return `הסתיים לפני ${Math.abs(diff)} ימים`;
+}
+
 function base64(bytes: Uint8Array): string {
   let binary = "";
   const chunk = 0x8000;
@@ -240,6 +406,50 @@ function base64(bytes: Uint8Array): string {
     binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
   }
   return btoa(binary);
+}
+
+// Infer a usable mime type. Some Telegram clients send PDFs/images as
+// "application/octet-stream", so fall back to the file-name extension.
+function guessMime(declared?: string | null, fileName?: string | null): string {
+  const m = (declared ?? "").toLowerCase();
+  if (m.startsWith("image/") || m === "application/pdf") return m;
+  const ext = (fileName ?? "").toLowerCase().split(".").pop() ?? "";
+  const byExt: Record<string, string> = {
+    pdf: "application/pdf",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    png: "image/png",
+    webp: "image/webp",
+    heic: "image/heic",
+    heif: "image/heif",
+    gif: "image/gif",
+  };
+  return byExt[ext] ?? m ?? "application/octet-stream";
+}
+
+// Pick a clean, single-segment file extension for the storage key. Accepts only
+// a short alphanumeric extension (rejecting things like "documents/file_4"),
+// preferring the original file name, then the mime type, then the Telegram path.
+function pickExt(fileName?: string | null, mime?: string | null, filePath?: string | null): string {
+  const clean = (s?: string | null): string => {
+    const e = (s ?? "").toLowerCase().split(".").pop() ?? "";
+    return /^[a-z0-9]{1,5}$/.test(e) ? e : "";
+  };
+  const byMime: Record<string, string> = {
+    "application/pdf": "pdf",
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/heic": "heic",
+    "image/heif": "heif",
+    "image/gif": "gif",
+  };
+  return (
+    clean(fileName) ||
+    byMime[(mime ?? "").toLowerCase()] ||
+    clean(filePath) ||
+    ((mime ?? "").startsWith("image/") ? "jpg" : "bin")
+  );
 }
 
 function numOrNull(v: unknown): number | null {
