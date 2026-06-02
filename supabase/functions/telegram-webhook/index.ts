@@ -91,14 +91,16 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
-    // Find an attached photo or PDF/image document.
+    // Find an attached photo or document. We accept any document (some clients
+    // send PDFs as application/octet-stream) and infer a sane mime type from the
+    // declared type or the file name extension.
     let fileId: string | null = null;
     let mime = "image/jpeg";
     if (msg.photo?.length) {
       fileId = msg.photo[msg.photo.length - 1].file_id; // largest size
-    } else if (msg.document && /image\/|pdf/.test(msg.document.mime_type ?? "")) {
+    } else if (msg.document) {
       fileId = msg.document.file_id;
-      mime = msg.document.mime_type;
+      mime = guessMime(msg.document.mime_type, msg.document.file_name);
     }
 
     if (!fileId) {
@@ -156,6 +158,7 @@ Deno.serve(async (req) => {
       agent_id_number: extracted?.agent_id_number ?? null,
       agreement_date: dateOrNull(extracted?.agreement_date),
       signed_form_url: signedFormUrl,
+      signed_form_urls: [signedFormUrl],
     };
     const { data: prop, error: insErr } = await db
       .from("properties").insert(ins).select("id").single();
@@ -178,11 +181,18 @@ Deno.serve(async (req) => {
 
     const base = await getSecret(db, "app_base_url");
     const link = base ? `\n🔗 ${base.replace(/\/$/, "")}/properties/${prop.id}` : "";
-    const summary = extracted
-      ? `📍 ${ins.property_address ?? "—"}${ins.city ? ", " + ins.city : ""}\n🏷️ ${
+    let summary: string;
+    if (extracted) {
+      summary = `📍 ${ins.property_address ?? "—"}${ins.city ? ", " + ins.city : ""}\n🏷️ ${
         ins.deal_type === "rent" ? "השכרה" : "מכירה"
-      } · ${ins.property_type ?? "—"}\n💰 ${ins.asking_price ? Number(ins.asking_price).toLocaleString("he-IL") + " ₪" : "—"}\n👤 ${ins.owner_name ?? "—"}\n📅 בלעדיות עד: ${ins.exclusivity_end ?? "—"}`
-      : "הטופס נשמר. (קריאת AI אינה פעילה — לא הוגדר מפתח Anthropic.)";
+      } · ${ins.property_type ?? "—"}\n💰 ${ins.asking_price ? Number(ins.asking_price).toLocaleString("he-IL") + " ₪" : "—"}\n👤 ${ins.owner_name ?? "—"}\n📅 בלעדיות עד: ${ins.exclusivity_end ?? "—"}`;
+    } else if (!anthropicKey) {
+      summary = "הטופס נשמר. (קריאת AI אינה פעילה — לא הוגדר מפתח Anthropic.)";
+    } else if (!mime.startsWith("image/")) {
+      summary = "הטופס (PDF) נשמר. קריאת הפרטים האוטומטית זמינה כרגע רק לצילומים/תמונות.";
+    } else {
+      summary = "הטופס נשמר אך לא הצלחתי לקרוא את הפרטים אוטומטית — נא להשלים ידנית.";
+    }
 
     await send(
       token,
@@ -240,6 +250,25 @@ function base64(bytes: Uint8Array): string {
     binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
   }
   return btoa(binary);
+}
+
+// Infer a usable mime type. Some Telegram clients send PDFs/images as
+// "application/octet-stream", so fall back to the file-name extension.
+function guessMime(declared?: string | null, fileName?: string | null): string {
+  const m = (declared ?? "").toLowerCase();
+  if (m.startsWith("image/") || m === "application/pdf") return m;
+  const ext = (fileName ?? "").toLowerCase().split(".").pop() ?? "";
+  const byExt: Record<string, string> = {
+    pdf: "application/pdf",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    png: "image/png",
+    webp: "image/webp",
+    heic: "image/heic",
+    heif: "image/heif",
+    gif: "image/gif",
+  };
+  return byExt[ext] ?? m ?? "application/octet-stream";
 }
 
 function numOrNull(v: unknown): number | null {
