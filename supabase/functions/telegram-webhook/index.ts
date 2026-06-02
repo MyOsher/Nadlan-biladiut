@@ -153,7 +153,11 @@ Deno.serve(async (req) => {
     if (!filePath) throw new Error("getFile failed");
     const fileRes = await fetch(`https://api.telegram.org/file/bot${token}/${filePath}`);
     const bytes = new Uint8Array(await fileRes.arrayBuffer());
-    const ext = filePath.split(".").pop() ?? "jpg";
+    // Telegram's file_path for documents is often "documents/file_4" (no real
+    // extension), so never trust it blindly — that produced broken storage keys
+    // like ".documents/file_4". Prefer the original file name, then the mime
+    // type, and only fall back to the path if it has a clean extension.
+    const ext = pickExt(msg.document?.file_name, mime, filePath);
 
     // Store the signed form.
     const storagePath = `telegram/${crypto.randomUUID()}.${ext}`;
@@ -421,6 +425,31 @@ function guessMime(declared?: string | null, fileName?: string | null): string {
     gif: "image/gif",
   };
   return byExt[ext] ?? m ?? "application/octet-stream";
+}
+
+// Pick a clean, single-segment file extension for the storage key. Accepts only
+// a short alphanumeric extension (rejecting things like "documents/file_4"),
+// preferring the original file name, then the mime type, then the Telegram path.
+function pickExt(fileName?: string | null, mime?: string | null, filePath?: string | null): string {
+  const clean = (s?: string | null): string => {
+    const e = (s ?? "").toLowerCase().split(".").pop() ?? "";
+    return /^[a-z0-9]{1,5}$/.test(e) ? e : "";
+  };
+  const byMime: Record<string, string> = {
+    "application/pdf": "pdf",
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/heic": "heic",
+    "image/heif": "heif",
+    "image/gif": "gif",
+  };
+  return (
+    clean(fileName) ||
+    byMime[(mime ?? "").toLowerCase()] ||
+    clean(filePath) ||
+    ((mime ?? "").startsWith("image/") ? "jpg" : "bin")
+  );
 }
 
 function numOrNull(v: unknown): number | null {
