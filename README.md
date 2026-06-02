@@ -131,6 +131,57 @@ on conflict (key) do update set value = excluded.value;
 
 ללא המפתח — הבוט עדיין שומר את הטופס ויוצר טיוטה, פשוט בלי מילוי אוטומטי.
 
+## אתר ציבורי / Public website API
+
+כל נכס יכול להתפרסם באתר השיווקי החיצוני שלך. בעמוד הנכס יש סקשן **"פרסום באתר"**:
+מפעילים את הנכס, כותבים **תיאור שיווקי**, ומקבלים קישורי API מוכנים להעתקה.
+
+האתר החיצוני מושך נתונים דרך ה-Edge Function **`public-listings`** (ולא ישירות מהטבלה),
+כך שנחשפים **רק שדות שיווקיים + הגלריה** — בלי ת״ז, חתימות, עמלות או גוש/חלקה.
+
+נקודות קצה (GET, עם CORS — אפשר לקרוא מכל אתר):
+
+```
+GET .../functions/v1/public-listings              # כל הנכסים המפורסמים (תקציר + תמונה ראשית)
+GET .../functions/v1/public-listings?slug=<slug>  # נכס בודד (כל השדות השיווקיים + media[])
+```
+
+דוגמת שימוש מהאתר (vanilla JS — עובד גם בוורדפרס/Wix דרך בלוק HTML):
+
+```html
+<div id="listings"></div>
+<script>
+const API = "https://kovjbfdgllnprryqvgon.supabase.co/functions/v1/public-listings";
+fetch(API)
+  .then((r) => r.json())
+  .then(({ listings }) => {
+    document.getElementById("listings").innerHTML = listings.map((p) => `
+      <a href="/property?slug=${p.public_slug}" class="card">
+        <img src="${p.cover_image_url ?? ""}" alt="">
+        <h3>${p.property_address ?? ""}, ${p.city ?? ""}</h3>
+        <p>${p.rooms ?? "?"} חד׳ · ${p.size_sqm ?? "?"} מ״ר · ${p.asking_price ? p.asking_price.toLocaleString("he-IL") + " ₪" : ""}</p>
+      </a>`).join("");
+  });
+</script>
+```
+
+לעמוד נכס בודד באתר, משכו לפי ה-slug וצרו גלריה מ-`media[]`:
+
+```js
+const slug = new URLSearchParams(location.search).get("slug");
+const p = await fetch(`${API}?slug=${slug}`).then((r) => r.json());
+// p.public_description, p.asking_price, p.media[] = [{type,url,caption}, ...]
+```
+
+**פריסת הפונקציה** (פעם אחת):
+
+```bash
+supabase functions deploy public-listings --no-verify-jwt
+```
+
+> אופציונלי: כדי להגביל את ה-CORS לדומיין האתר בלבד, הגדירו סוד
+> `PUBLIC_SITE_ORIGIN=https://your-site.com` ל-Edge Function (ברירת מחדל `*`).
+
 ## הערות אבטחה / Security notes
 
 - כרגע האפליקציה **ללא התחברות (no login)** לפי הבחירה. מדיניות ה-RLS פתוחה

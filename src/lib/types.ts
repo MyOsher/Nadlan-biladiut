@@ -38,6 +38,9 @@ export interface Property {
   signed_form_url: string | null;
   signed_form_urls: string[] | null;
   cover_image_url: string | null;
+  is_published: boolean;
+  public_slug: string | null;
+  public_description: string | null;
   created_at: string;
   updated_at: string;
 }

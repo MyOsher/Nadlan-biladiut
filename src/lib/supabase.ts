@@ -15,5 +15,9 @@ const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || DEFAULT_ANON_KEY;
 // resolving insert/update payloads to `never` with a hand-written Database type.
 export const supabase = createClient(url, anonKey);
 
+export const SUPABASE_URL = url;
 export const MEDIA_BUCKET = "property-media";
 export const FORMS_BUCKET = "signed-forms";
+
+/** Public, read-only listings API consumed by the external marketing website. */
+export const PUBLIC_LISTINGS_API = `${url}/functions/v1/public-listings`;

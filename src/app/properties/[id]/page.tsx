@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { supabase, FORMS_BUCKET } from "@/lib/supabase";
+import { supabase, FORMS_BUCKET, PUBLIC_LISTINGS_API } from "@/lib/supabase";
 import type { Property, PropertyStatus } from "@/lib/types";
 import { DEAL_TYPE_LABEL, STATUS_LABEL, cn, exclusivityState, formatDate } from "@/lib/utils";
 import SignaturePad from "@/components/SignaturePad";
@@ -80,6 +80,15 @@ export default function PropertyDetailPage() {
     if (!confirm("למחוק את הנכס לצמיתות? פעולה זו אינה הפיכה.")) return;
     await supabase.from("properties").delete().eq("id", id);
     router.push("/");
+  }
+
+  async function togglePublish(next: boolean) {
+    field("is_published", next);
+    const { error } = await supabase.from("properties").update({ is_published: next }).eq("id", id);
+    if (error) {
+      setError(error.message);
+      field("is_published", !next);
+    }
   }
 
   if (loading) return <p className="py-10 text-center text-slate-500">טוען…</p>;
@@ -183,6 +192,43 @@ export default function PropertyDetailPage() {
         />
       </Section>
 
+      <Section title="פרסום באתר">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="font-semibold text-slate-800">הצגת הנכס באתר הציבורי</div>
+            <p className="text-sm text-slate-500">
+              כשהנכס מפורסם, הוא נחשף ב-API הציבורי שהאתר שלך מושך ממנו — עם שדות שיווקיים
+              והגלריה בלבד (ללא ת״ז, חתימות, עמלות וגוש/חלקה).
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => togglePublish(!p.is_published)}
+            className={cn("btn", p.is_published ? "btn-primary" : "btn-secondary")}
+          >
+            {p.is_published ? "✓ מפורסם — לחץ להסתרה" : "פרסם באתר"}
+          </button>
+        </div>
+
+        <div className="mt-4">
+          <Field label="תיאור שיווקי (יוצג באתר הציבורי)">
+            <textarea
+              className="field-input min-h-[80px]"
+              placeholder="תיאור מוכר של הנכס לאתר — נפרד מההערות הפנימיות."
+              value={p.public_description ?? ""}
+              onChange={(e) => field("public_description", e.target.value)}
+            />
+          </Field>
+        </div>
+
+        {p.is_published && p.public_slug && (
+          <div className="mt-4 grid gap-2">
+            <CopyRow label="קישור API לנכס (לאתר)" value={`${PUBLIC_LISTINGS_API}?slug=${p.public_slug}`} />
+            <CopyRow label="API לכל הנכסים המפורסמים" value={PUBLIC_LISTINGS_API} />
+          </div>
+        )}
+      </Section>
+
       <Section title="חתימות וטופס חתום">
         <div className="grid gap-4 md:grid-cols-2">
           <SignaturePad label="חתימת הלקוח / בעלים" value={p.owner_signature} onChange={(v) => field("owner_signature", v)} />
@@ -242,6 +288,29 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <h2 className="mb-4 border-r-4 border-brand-500 pr-2 text-lg font-bold text-slate-800">{title}</h2>
       {children}
     </section>
+  );
+}
+
+function CopyRow({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div>
+      <label className="field-label">{label}</label>
+      <div className="flex items-center gap-2">
+        <input className="field-input flex-1 font-mono text-xs" value={value} readOnly />
+        <button
+          type="button"
+          className="btn btn-secondary whitespace-nowrap"
+          onClick={async () => {
+            await navigator.clipboard.writeText(value);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          }}
+        >
+          {copied ? "הועתק ✓" : "העתק"}
+        </button>
+      </div>
+    </div>
   );
 }
 
