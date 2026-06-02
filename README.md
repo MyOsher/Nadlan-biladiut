@@ -101,6 +101,36 @@ curl -X POST https://kovjbfdgllnprryqvgon.supabase.co/functions/v1/expiry-remind
 
 ---
 
+## בוט טלגרם / Telegram bot
+
+הבוט (**@Haneches_bot**) עושה שני דברים:
+
+1. **התראות** — שולח כל בוקר **סיכום יומי** של הנכסים הפעילים עם הימים שנותרו לבלעדיות,
+   ומדגיש נכסים שמסתיימים בקרוב (אותו `pg_cron` יומי שמפעיל את `expiry-reminders`).
+2. **העלאת טפסים** — שולחים לבוט **צילום או PDF של טופס בלעדיות חתום**, והוא:
+   שומר את הקובץ ב-Storage, **קורא את השדות באמצעות AI** (אם הוגדר מפתח Anthropic),
+   ויוצר **נכס חדש כטיוטה** עם הפרטים שמולאו — מוכן לבדיקה והשלמה באפליקציה.
+
+**חיבור:** פותחים את [t.me/Haneches_bot](https://t.me/Haneches_bot), שולחים `/start`,
+ו-`telegram_chat_id` נשמר אוטומטית. אפשר לבדוק את הסטטוס במסך **הגדרות**.
+
+**ארכיטקטורה:**
+- `supabase/functions/telegram-webhook` — מקבל עדכוני Telegram (פקודות + טפסים).
+  פרוס עם `verify_jwt=false` ומאומת באמצעות `secret_token` של Telegram.
+- ה-webhook נרשם פעם אחת דרך `GET .../telegram-webhook?setup=1`.
+- סודות (`telegram_bot_token`, `telegram_webhook_secret`, ובאופן אופציונלי
+  `anthropic_api_key`, `app_base_url`) נשמרים בטבלה הפרטית `app_secrets`
+  (RLS ללא policies → לא נגיש מהדפדפן; רק service-role של פונקציות הקצה).
+
+**הפעלת קריאת AI לטפסים:** הוסיפו מפתח Anthropic לטבלת הסודות:
+
+```sql
+insert into public.app_secrets(key,value) values ('anthropic_api_key','sk-ant-...')
+on conflict (key) do update set value = excluded.value;
+```
+
+ללא המפתח — הבוט עדיין שומר את הטופס ויוצר טיוטה, פשוט בלי מילוי אוטומטי.
+
 ## הערות אבטחה / Security notes
 
 - כרגע האפליקציה **ללא התחברות (no login)** לפי הבחירה. מדיניות ה-RLS פתוחה
