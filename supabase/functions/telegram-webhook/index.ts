@@ -168,9 +168,11 @@ Deno.serve(async (req) => {
     const signedFormUrl = db.storage.from("signed-forms").getPublicUrl(storagePath).data.publicUrl;
 
     // AI extraction (optional — only if an Anthropic key is present).
+    // Claude reads both photos/images and PDF scans of the signed form.
+    const isExtractable = mime.startsWith("image/") || mime === "application/pdf";
     let extracted: any = null;
     const anthropicKey = await getSecret(db, "anthropic_api_key");
-    if (anthropicKey && mime.startsWith("image/")) {
+    if (anthropicKey && isExtractable) {
       extracted = await extractWithClaude(anthropicKey, bytes, mime).catch(() => null);
     }
 
@@ -225,8 +227,8 @@ Deno.serve(async (req) => {
       } · ${ins.property_type ?? "—"}\n💰 ${ins.asking_price ? Number(ins.asking_price).toLocaleString("he-IL") + " ₪" : "—"}\n👤 ${ins.owner_name ?? "—"}\n📅 בלעדיות עד: ${ins.exclusivity_end ?? "—"}`;
     } else if (!anthropicKey) {
       summary = "הטופס נשמר. (קריאת AI אינה פעילה — לא הוגדר מפתח Anthropic.)";
-    } else if (!mime.startsWith("image/")) {
-      summary = "הטופס (PDF) נשמר. קריאת הפרטים האוטומטית זמינה כרגע רק לצילומים/תמונות.";
+    } else if (!isExtractable) {
+      summary = "הטופס נשמר. קריאת הפרטים האוטומטית זמינה לצילומים/תמונות ולקובצי PDF בלבד.";
     } else {
       summary = "הטופס נשמר אך לא הצלחתי לקרוא את הפרטים אוטומטית — נא להשלים ידנית.";
     }
@@ -246,7 +248,7 @@ Deno.serve(async (req) => {
 async function extractWithClaude(apiKey: string, bytes: Uint8Array, mime: string) {
   const b64 = base64(bytes);
   const prompt =
-    `This is a photo of an Israeli real-estate exclusive brokerage agreement ("הזמנת שירותי תיווך בבלעדיות"), often handwritten in Hebrew. ` +
+    `This is a photo or scanned PDF of an Israeli real-estate exclusive brokerage agreement ("הזמנת שירותי תיווך בבלעדיות"), often handwritten in Hebrew. ` +
     `Extract the fields and respond with ONLY a JSON object (no markdown) using these keys: ` +
     `deal_type ("sale" or "rent"), property_type, rooms (number), property_address, city, block, parcel, sub_parcel, ` +
     `asking_price (number, no separators), owner_name, ` +
@@ -254,6 +256,11 @@ async function extractWithClaude(apiKey: string, bytes: Uint8Array, mime: string
     `exclusivity_start (YYYY-MM-DD), exclusivity_end (YYYY-MM-DD), fee_sale_percent (number), ` +
     `form_number, agent_name, agent_id_number, agreement_date (YYYY-MM-DD). ` +
     `Use null for anything you cannot read. Dates may appear as DD/MM/YY — interpret the year as 20YY.`;
+
+  // PDFs are sent as a "document" block; images as an "image" block.
+  const formBlock = mime === "application/pdf"
+    ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } }
+    : { type: "image", source: { type: "base64", media_type: mime, data: b64 } };
 
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -268,7 +275,7 @@ async function extractWithClaude(apiKey: string, bytes: Uint8Array, mime: string
       messages: [{
         role: "user",
         content: [
-          { type: "image", source: { type: "base64", media_type: mime, data: b64 } },
+          formBlock,
           { type: "text", text: prompt },
         ],
       }],
