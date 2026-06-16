@@ -1,83 +1,100 @@
 // Brand Identity Constants
+// Source: houses-for-sale.co.il design tokens
 export const BRAND = {
   // Company Information
-  name: 'Nadlan Biladiut',
-  tagline: 'Exclusive Real Estate Management Made Simple',
-  website: 'https://nadlan-biladiut.com',
+  name: 'הנכס בגובה העיניים',
+  nameEnglish: 'The Property at Eye Level',
+  tagline: 'הנכס בגובה העיניים - שיווק נדל"ן מקצועי',
+  website: 'https://houses-for-sale.co.il',
 
   // Brand Description
-  description: 'Professional property management platform for exclusive real estate markets',
+  description: 'משרד שיווק נדל"ן מקצועי המתמחה בשוק הנדלן הבלעדי בקרית-אונו וסביבה',
 
   // Key Selling Points
   sellingPoints: [
-    'Exclusive property tracking and management',
-    'Real-time market insights and analytics',
-    'Secure client relationship management',
-    'Automated listing distribution',
-    'Advanced privacy controls',
-    'Professional collaboration tools',
+    'ניהול נכסים בלעדיים',
+    'ידע עמוק של שוק הדיור',
+    'שירות אישי ומקצועי',
+    'שיווק איכותי ויעיל',
+    'תעודות ורישוי מלא',
+    'זמינות 24/7 למשכנתאים',
   ],
 } as const;
 
-// Color Palette
+// Color Palette - From houses-for-sale.co.il
 export const COLORS = {
-  // Primary Colors
+  // Primary / Accent Colors
   primary: {
-    main: '#1E3A8A',      // Deep blue
-    light: '#3B82F6',     // Bright blue
-    dark: '#1E40AF',      // Dark blue
+    main: '#2563eb',      // Primary accent blue — buttons, links, highlights
+    dark: '#1d4ed8',      // Darker blue — hover states
+    light: '#29aae3',     // Lighter blue (legacy primary)
   },
 
   // Secondary Colors
   secondary: {
-    main: '#F59E0B',      // Amber
-    light: '#FBBF24',     // Light amber
-    dark: '#D97706',      // Dark amber
+    whatsapp: '#25d366',  // WhatsApp green
+    success: '#25d366',   // Success state (WhatsApp green)
   },
 
   // Accent Colors
   accent: {
-    success: '#10B981',   // Green
-    warning: '#F97316',   // Orange
-    danger: '#EF4444',    // Red
-    info: '#06B6D4',      // Cyan
+    success: '#25d366',   // WhatsApp green
+    warning: '#f97316',   // Orange (if needed)
+    danger: '#ef4444',    // Red (if needed)
+    info: '#2563eb',      // Info (primary blue)
   },
 
   // Background & Neutral
   background: {
-    primary: '#FFFFFF',   // White
-    secondary: '#F9FAFB', // Light gray
-    tertiary: '#F3F4F6',  // Medium light gray
+    primary: '#ffffff',   // Page background — white
+    secondary: '#f5f4ef', // Tinted section background — warm off-white
+    tertiary: '#f5f4ef',  // Tinted sections
+    dark: '#171717',      // Dark section background
   },
 
   // Text Colors
   text: {
-    primary: '#111827',   // Very dark gray
-    secondary: '#4B5563', // Medium gray
-    light: '#9CA3AF',     // Light gray
-    inverse: '#FFFFFF',   // White
+    primary: '#171717',   // Main dark text (headings, body on light bg)
+    secondary: '#333333', // Secondary dark text
+    body: '#222222',      // Body default text
+    muted: '#737373',     // Muted / caption text
+    light: '#ffffff',     // Text on dark backgrounds
+    inverse: '#ffffff',   // Inverse text on dark backgrounds
+  },
+
+  // UI / Borders
+  border: {
+    light: '#e5e3dd',     // Dividers, subtle borders
+    medium: '#cccccc',    // Stronger borders (ghost button)
   },
 } as const;
 
-// Typography
+// Typography - From houses-for-sale.co.il design system
 export const FONTS = {
   // Font Families
   families: {
-    heading: "'Helvetica Neue', Arial, sans-serif",
-    body: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
+    body: "'Rubik', system-ui, -apple-system, sans-serif",
+    display: "'Frank Ruhl Libre', Georgia, serif",
+    hebrew: "Rubik, Heebo, 'Arial Hebrew', Arial, sans-serif",
+    site: "Rubik, Heebo, 'Arial Hebrew', Arial, sans-serif",
     mono: "'Courier New', monospace",
   },
 
   // Font Sizes (in pixels for design)
   sizes: {
-    xs: 12,
+    small: 13,
+    xs: 13,
     sm: 14,
     base: 16,
-    lg: 18,
-    xl: 20,
-    '2xl': 24,
-    '3xl': 30,
-    '4xl': 36,
+    medium: 20,
+    lg: 36,
+    xl: 42,
+    '2xl': 64,
+    '3xl': 64,
+    '4xl': 140,
+    h1: 140,
+    h2: 64,
+    h3: 42,
   },
 
   // Font Weights
@@ -92,6 +109,10 @@ export const FONTS = {
 
   // Line Heights
   lineHeights: {
+    h1: 161,
+    h2: 73.6,
+    h3: 48.3,
+    body: 24,
     tight: 1.2,
     normal: 1.5,
     relaxed: 1.75,
@@ -99,43 +120,47 @@ export const FONTS = {
   },
 } as const;
 
-// Target Audience Segments
+// Target Audience Segments - קרית-אונו וסביבה
 export const TARGET_AUDIENCE = {
   segments: [
     {
-      name: 'Property Owners',
-      description: 'Individuals and corporations managing multiple properties',
+      name: 'בעלי דירות למכירה',
+      nameEnglish: 'Property Owners',
+      description: 'בעלי נכסים המעוניינים למכור את הנכס שלהם',
       characteristics: [
-        'High net worth individuals',
-        'Property investors',
-        'Real estate portfolios',
+        'משפחות שמעבירות עיר',
+        'משקיעי נדל"ן',
+        'יורשי נכסים',
       ],
     },
     {
-      name: 'Real Estate Agents',
-      description: 'Professional agents seeking advanced management tools',
+      name: 'קונים פוטנציאליים',
+      nameEnglish: 'Potential Buyers',
+      description: 'משפחות וזוגות המחפשות דיור בקרית-אונו',
       characteristics: [
-        'Independent agents',
-        'Boutique agencies',
-        'High-volume agents',
+        'זוגות צעירים',
+        'משפחות עם ילדים',
+        'מבוגרים המעוניינים בדיור בכבלי עיר',
       ],
     },
     {
-      name: 'Property Developers',
-      description: 'Developers managing large portfolios and exclusivity',
+      name: 'דיירים למשכנתא',
+      nameEnglish: 'Mortgage Seekers',
+      description: 'קונים המחפשים עזרה בהשגת משכנתא',
       characteristics: [
-        'Commercial developers',
-        'Residential developers',
-        'Luxury market developers',
+        'קונים ראשונים',
+        'משפחות מהוצאה גבוהה',
+        'משקיעים מוסדיים',
       ],
     },
     {
-      name: 'Investment Firms',
-      description: 'Institutional investors managing real estate portfolios',
+      name: 'משקיעים וחברות',
+      nameEnglish: 'Investors & Corporations',
+      description: 'גופים להשקעה בנדל"ן בעיר',
       characteristics: [
-        'Private equity firms',
-        'REITs',
-        'Asset managers',
+        'קרנות השקעה',
+        'חברות בניה',
+        'משקיעים בינלאומיים',
       ],
     },
   ],
@@ -230,51 +255,51 @@ export const AD_FORMATS = {
   },
 } as const;
 
-// Ad Copy Templates
+// Ad Copy Templates - עברית ואנגלית
 export const AD_COPY_TEMPLATES = {
   propertyShowcase: {
     headlines: [
-      'Exclusive {property_type} Available Now',
-      'Discover {property_type} in {location}',
-      '{property_type} Excellence Awaits',
-      'Premium {property_type} - Limited Availability',
+      'דירה {property_type} בקרית-אונו',
+      'מצא את הבית החלום שלך ב{location}',
+      '{property_type} פנים יהלום בעיר',
+      'דיור פרימיום - זמינות מוגבלת',
     ],
     descriptions: [
-      'Manage your exclusive properties with confidence. {tagline}',
-      'Professional property management for discerning owners. {tagline}',
-      'Elevate your property management strategy. {tagline}',
+      'הנכס בגובה העיניים - שיווק נדל"ן מקצועי. {tagline}',
+      'שירות אישי מקצועי לכל צרכי הדיור שלך.',
+      'ניהול נכסים בלעדיים בעיר המובילה בביטחון וחינוך.',
     ],
     ctas: [
-      'View Property',
-      'Schedule Tour',
-      'Learn More',
-      'Get Started',
-      'Contact Us',
+      'צפה בנכס',
+      'קבע סיור',
+      'למידע נוסף',
+      'קח הצעה',
+      'צור קשר',
     ],
   },
 
   solutionFocus: {
     headlines: [
-      'Simplify Property Management',
-      'Take Control of Your Portfolio',
-      'Professional Property Solutions',
-      'Exclusive Market Expertise',
+      'חפש דיור בקרית-אונו',
+      'הנכס בגובה העיניים - מומחים בשוק',
+      'פתרון שיווק מקצועי לנכסים',
+      'בעלות זכויות בלעדיות',
     ],
     descriptions: [
-      'Streamline operations and maximize returns with {name}.',
-      'Advanced tools for serious property managers.',
-      'Your competitive advantage in luxury real estate.',
+      'בחברתנו קבל שירות מסורתי עם טכנולוגיה מודרנית.',
+      'ידע עמוק של שוק קרית-אונו והסביבה.',
+      'אנחנו נוכל למצוא לך את הנכס המושלם.',
     ],
     ctas: [
-      'Start Free Trial',
-      'Schedule Demo',
-      'Learn Features',
-      'Join Today',
+      'התחל כעת',
+      'קבע פגישה',
+      'למידע נוסף',
+      'הצטרף אלינו',
     ],
   },
 } as const;
 
-// Design Guidelines
+// Design Guidelines - from houses-for-sale.co.il
 export const DESIGN_GUIDELINES = {
   spacing: {
     xs: 4,
@@ -287,6 +312,7 @@ export const DESIGN_GUIDELINES = {
 
   borderRadius: {
     none: 0,
+    badge: 3,
     sm: 4,
     md: 8,
     lg: 12,
@@ -295,10 +321,51 @@ export const DESIGN_GUIDELINES = {
   },
 
   shadows: {
+    none: 'none',
     sm: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
     md: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
     lg: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
     xl: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+  },
+
+  // Button Styles
+  buttons: {
+    cta: {
+      background: '#2563eb',
+      color: '#ffffff',
+      border: '1.33px solid #2563eb',
+      borderRadius: '0',
+      fontSize: '14px',
+      fontWeight: 500,
+      padding: '11px 26px',
+    },
+    primary: {
+      background: '#2563eb',
+      color: '#ffffff',
+      border: '1.33px solid #2563eb',
+      borderRadius: '0',
+      fontSize: '13px',
+      fontWeight: 500,
+      padding: '14px 28px',
+    },
+    whatsapp: {
+      background: '#25d366',
+      color: '#ffffff',
+      border: '1.33px solid #25d366',
+      borderRadius: '0',
+      fontSize: '13px',
+      fontWeight: 500,
+      padding: '14px 28px',
+    },
+    ghost: {
+      background: 'transparent',
+      color: '#171717',
+      border: '1.33px solid #cccccc',
+      borderRadius: '0',
+      fontSize: '13px',
+      fontWeight: 500,
+      padding: '14px 28px',
+    },
   },
 
   // Logo and brand asset paths (relative to generated folder)
