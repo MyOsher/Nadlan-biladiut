@@ -129,9 +129,10 @@ Deno.serve(async (req) => {
     const signedFormUrl = db.storage.from("signed-forms").getPublicUrl(storagePath).data.publicUrl;
 
     // AI extraction (optional — only if an Anthropic key is present).
+    // Works for both images (photos) and PDF documents.
     let extracted: any = null;
     const anthropicKey = await getSecret(db, "anthropic_api_key");
-    if (anthropicKey && mime.startsWith("image/")) {
+    if (anthropicKey && (mime.startsWith("image/") || mime === "application/pdf")) {
       extracted = await extractWithClaude(anthropicKey, bytes, mime).catch(() => null);
     }
 
@@ -198,8 +199,12 @@ Deno.serve(async (req) => {
 
 async function extractWithClaude(apiKey: string, bytes: Uint8Array, mime: string) {
   const b64 = base64(bytes);
+  // Claude accepts images as `image` blocks and PDFs as `document` blocks.
+  const fileBlock = mime === "application/pdf"
+    ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } }
+    : { type: "image", source: { type: "base64", media_type: mime, data: b64 } };
   const prompt =
-    `This is a photo of an Israeli real-estate exclusive brokerage agreement ("הזמנת שירותי תיווך בבלעדיות"), often handwritten in Hebrew. ` +
+    `This is a scan/photo of an Israeli real-estate exclusive brokerage agreement ("הזמנת שירותי תיווך בבלעדיות"), often handwritten in Hebrew. ` +
     `Extract the fields and respond with ONLY a JSON object (no markdown) using these keys: ` +
     `deal_type ("sale" or "rent"), property_type, rooms (number), property_address, city, block, parcel, sub_parcel, ` +
     `asking_price (number, no separators), owner_name, ` +
@@ -221,7 +226,7 @@ async function extractWithClaude(apiKey: string, bytes: Uint8Array, mime: string
       messages: [{
         role: "user",
         content: [
-          { type: "image", source: { type: "base64", media_type: mime, data: b64 } },
+          fileBlock,
           { type: "text", text: prompt },
         ],
       }],
