@@ -1,0 +1,23 @@
+{
+  "name": "meta-ads-generator",
+  "version": "1.0.0",
+  "description": "Generate Meta ads using Google Generative AI",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "keywords": ["meta", "ads", "generative-ai", "google-ai"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@google/generative-ai": "^0.4.0",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.10",
+    "typescript": "^5.6.2",
+    "tsx": "^4.19.1"
+  }
+}
